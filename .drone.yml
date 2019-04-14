@@ -1,0 +1,28 @@
+kind: pipeline
+name: default
+
+steps:
+  - name: check static code analysis
+    image: elixir:alpine
+    failure: ignore
+    commands:
+      - curl -s https://raw.githubusercontent.com/qwexvf/team-recruit-api/develop/.drone/install_dependencies.sh | sh
+      - mix local.rebar --force
+      - mix local.hex --force
+      - mix deps.get
+      - mix credo --strict
+  - name: check tests
+    image: elixir:alpine
+    commands:
+      - curl -s https://raw.githubusercontent.com/qwexvf/team-recruit-api/develop/.drone/install_dependencies.sh | sh
+      - mix local.rebar --force
+      - mix local.hex --force
+      - mix deps.get
+      - mix test
+  - name: discord-webhook
+    image: appleboy/drone-discord
+    settings:
+      webhook_id:
+        from_secret: discord_webhook_id
+      webhook_token:
+        from_secret: discord_webhook_token
