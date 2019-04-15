@@ -109,7 +109,13 @@ defmodule Ueberauth.Strategy.Steam do
   end
 
   @spec retrieve_user(map) :: map | nil
-  defp retrieve_user(%{"openid.claimed_id" => "http://steamcommunity.com/openid/id/" <> id}) do
+  defp retrieve_user(%{"openid.claimed_id" => claimed_id}) do
+    id = case claimed_id do
+      "http://steamcommunity.com/openid/id/" <> id -> id
+      "https://steamcommunity.com/openid/id/" <> id -> id
+      _ -> raise "claimed_id matching error"
+    end
+
     key =
       :ueberauth
       |> Application.fetch_env!(Ueberauth.Strategy.Steam)
