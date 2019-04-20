@@ -15,11 +15,16 @@ defmodule Ueberauth.Strategy.Steam do
   """
   @spec handle_request!(Plug.Conn.t) :: Plug.Conn.t
   def handle_request!(conn) do
+    return_to = 
+      :ueberauth
+      |> Application.fetch_env!(Ueberauth.Strategy.Steam)
+      |> Keyword.get(:return_to) || callback_url(conn)
+
     query =
       %{
         "openid.mode" => "checkid_setup",
-        "openid.realm" => callback_url(conn),
-        "openid.return_to" => callback_url(conn),
+        "openid.realm" => return_to,
+        "openid.return_to" => return_to,
         "openid.ns" => "http://specs.openid.net/auth/2.0",
         "openid.claimed_id" => "http://specs.openid.net/auth/2.0/identifier_select",
         "openid.identity" => "http://specs.openid.net/auth/2.0/identifier_select",
@@ -43,7 +48,7 @@ defmodule Ueberauth.Strategy.Steam do
       ]
       |> Enum.map(&Task.async/1)
       |> Enum.map(&Task.await/1)
-
+    
     case valid && !is_nil(user) do
       true ->
         conn
@@ -122,6 +127,8 @@ defmodule Ueberauth.Strategy.Steam do
       |> Keyword.get(:api_key)
     url = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=" <> key <> "&steamids=" <> id
 
+    Application.ensure_all_started(:httpoison)
+
     with {:ok, %HTTPoison.Response{body: body}} <- HTTPoison.get(url),
          {:ok, user} <- Poison.decode(body, keys: :atoms)
     do
@@ -140,11 +147,17 @@ defmodule Ueberauth.Strategy.Steam do
       |> Map.put("openid.mode", "check_authentication")
       |> URI.encode_query
 
-    case HTTPoison.get("https://steamcommunity.com/openid/login?" <> query) do
-      {:ok, %HTTPoison.Response{body: body, status_code: 200}} ->
-        String.contains?(body, "is_valid:true\n")
-      _ ->
-        false
+    Application.ensure_all_started(:httpoison)
+
+    %HTTPoison.Response{status_code: 200, body: body} =
+      HTTPoison.post!("https://steamcommunity.com/openid/login", query, [
+        {"Content-Type", "application/x-www-form-urlencoded"}
+      ])
+
+    if String.contains?(body, "is_valid:true") do
+      true
+    else
+      raise "Invalid auth attempt: #{inspect(params)}"
     end
   end
 
